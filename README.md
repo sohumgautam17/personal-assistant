@@ -1,6 +1,6 @@
-# SMS Agent Stack MVP
+# Personal Assistant API
 
-A complete SMS-based AI agent stack using Twilio, FastAPI, and Hypermode.
+A complete AI-powered personal assistant API using FastAPI and Hypermode with RAG capabilities.
 
 ## 🚀 Quick Start
 
@@ -16,10 +16,9 @@ cp env.example .env
 ```
 
 Required environment variables:
-- `HYPERTMODE_API_KEY`: Your Hypermode API key
-- `TWILIO_ACCOUNT_SID`: Your Twilio Account SID
-- `TWILIO_AUTH_TOKEN`: Your Twilio Auth Token
-- `TWILIO_PHONE_NUMBER`: Your Twilio phone number
+- `HYPERMODE_API_KEY`: Your Hypermode API key
+- `OPENAI_API_KEY`: Your OpenAI API key (optional, for enhanced RAG features)
+- `OPENROUTER_API_KEY`: Your OpenRouter API key (optional, alternative to OpenAI)
 
 ### 3. Run Locally
 ```bash

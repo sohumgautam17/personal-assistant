@@ -12,7 +12,7 @@ fi
 
 # Check if requirements are installed
 echo "📋 Checking dependencies..."
-python3 -c "import fastapi, twilio" 2>/dev/null || {
+python3 -c "import fastapi, httpx" 2>/dev/null || {
     echo "⚠️  Installing dependencies..."
     pip install -r requirements.txt
 }
@@ -22,8 +22,8 @@ echo "🔍 Checking environment..."
 python3 debug_env.py
 
 echo "🌟 Starting FastAPI server on port 8000..."
-echo "📱 SMS webhook ready at: http://localhost:8000/sms"
 echo "🔧 Status dashboard at: http://localhost:8000/"
+echo "🤖 Hypermode API ready for AI responses"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
