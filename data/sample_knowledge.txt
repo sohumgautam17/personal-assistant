@@ -1,0 +1,24 @@
+Personal Assistant Knowledge Base
+
+## About This System
+This is a personal assistant that combines SMS messaging with AI-powered responses using Hypermode and optional RAG capabilities.
+
+## Features
+- SMS integration via Twilio
+- AI responses using Hypermode API
+- Document retrieval and search capabilities
+- FastAPI web server
+- Health monitoring and status dashboards
+
+## Usage
+Send SMS messages to the configured Twilio number to receive intelligent AI responses. The system can also be accessed via HTTP endpoints for testing and monitoring.
+
+## Technical Stack
+- Python with FastAPI
+- Twilio for SMS
+- Hypermode for AI responses
+- OpenAI for enhanced RAG features (optional)
+- Vector database for document search
+
+## Configuration
+Set up your environment variables for Twilio and Hypermode API keys. See the main documentation for detailed setup instructions. 
