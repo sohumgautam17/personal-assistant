@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Personal Assistant with RAG", version="1.0.0")
 
 # Configuration
-HYPERTMODE_API_KEY = os.getenv("HYPERTMODE_API_KEY")
-HYPERTMODE_BASE_URL = os.getenv("HYPERTMODE_BASE_URL", "https://api.hypertmode.com")
+HYPERMODE_API_KEY = os.getenv("HYPERMODE_API_KEY")
+HYPERMODE_BASE_URL = os.getenv("HYPERMODE_BASE_URL", "https://api.hypermode.com")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
@@ -50,18 +50,18 @@ class RAGManager:
         self._initialize_rag()
     
     def _initialize_rag(self):
-        """Initialize RAG system using SimpleRAG with OpenRouter"""
+        """Initialize RAG system using simple search functions"""
         try:
-            # Check if we have OpenRouter API key (prefer over OpenAI)
-            if OPENROUTER_API_KEY:
-                logger.info("Using OpenRouter for RAG functionality")
-                from simple_rag import SimpleRAG
-                self.rag = SimpleRAG(OPENROUTER_API_KEY, OPENROUTER_BASE_URL)
-                return
+            # Load documents using simple_rag functions
+            from simple_rag import load_documents, simple_search
+            self.documents = load_documents(self.data_dir)
+            self.search_func = simple_search
             
-            # Fallback to basic functionality if no API keys
+            if self.documents:
+                logger.info(f"RAG initialized with {len(self.documents)} documents")
+                self.rag = True
             else:
-                logger.warning("No OpenRouter API key found - RAG features will be disabled")
+                logger.warning("No documents found - RAG features will be disabled")
                 self.rag = None
             
         except Exception as e:
@@ -70,12 +70,16 @@ class RAGManager:
     
     async def query_documents(self, query: str) -> Optional[str]:
         """Query the document index for relevant information"""
-        if not self.rag:
+        if not self.rag or not self.documents:
             return None
         
         try:
-            response = await self.rag.query(query)
-            return response
+            results = self.search_func(query, self.documents, max_results=3)
+            if results:
+                # Combine the top results into a context string
+                context = "\n\n".join(results[:2])  # Use top 2 results
+                return context[:1000]  # Limit context length
+            return None
         except Exception as e:
             logger.error(f"Error querying documents: {e}")
             return None
@@ -83,29 +87,36 @@ class RAGManager:
     def get_status(self) -> dict:
         """Get RAG system status"""
         if self.rag:
-            status = self.rag.get_status()
-            status["provider"] = "OpenRouter (SimpleRAG)"
-            return status
+            return {
+                "initialized": True,
+                "provider": "Simple Search",
+                "documents_loaded": len(self.documents) if hasattr(self, 'documents') else 0,
+                "data_directory": os.path.exists(self.data_dir)
+            }
         else:
             return {
                 "initialized": False,
                 "provider": "None",
-                "using_openrouter": bool(OPENROUTER_API_KEY),
+                "documents_loaded": 0,
                 "data_directory": os.path.exists(self.data_dir)
             }
     
-    def reload_documents(self):
-        """Reload documents and reinitialize the index"""
-        if self.rag:
-            return self.rag.reload_documents()
-        else:
+    def reload_documents(self) -> str:
+        """Reload documents from the data directory"""
+        try:
             self._initialize_rag()
-            return "RAG reinitialized" if self.rag else "Failed to initialize RAG"
+            if self.rag:
+                return f"Successfully reloaded {len(self.documents)} documents"
+            else:
+                return "No documents found to load"
+        except Exception as e:
+            logger.error(f"Error reloading documents: {e}")
+            return f"Error reloading documents: {e}"
 
 class HypermodeClient:
     def __init__(self, api_key: Optional[str], base_url: str, rag_manager: Optional[RAGManager] = None):
         if not api_key:
-            raise ValueError("HYPERTMODE_API_KEY is required")
+            raise ValueError("HYPERMODE_API_KEY is required")
         self.api_key = api_key
         self.base_url = base_url
         self.rag_manager = rag_manager
@@ -311,7 +322,7 @@ rag_manager = RAGManager()
 
 # Initialize Hypermode client with RAG
 try:
-    hypermode_client = HypermodeClient(HYPERTMODE_API_KEY, HYPERTMODE_BASE_URL, rag_manager)
+    hypermode_client = HypermodeClient(HYPERMODE_API_KEY, HYPERMODE_BASE_URL, rag_manager)
 except ValueError as e:
     logger.error(f"Failed to initialize Hypermode client: {e}")
     hypermode_client = None
