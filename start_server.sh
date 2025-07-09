@@ -24,6 +24,7 @@ python3 debug_env.py
 echo "🌟 Starting FastAPI server on port 8000..."
 echo "🔧 Status dashboard at: http://localhost:8000/"
 echo "🤖 Hypermode API ready for AI responses"
+echo "💬 Slack webhook ready at: http://localhost:8000/slack/events"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""

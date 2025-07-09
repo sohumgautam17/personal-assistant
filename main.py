@@ -3,9 +3,11 @@ from fastapi.responses import Response
 import os
 import httpx
 from dotenv import load_dotenv
-# Removed Twilio imports since no longer using Twilio
 import logging
 from typing import Optional
+from slack_bolt import App
+from slack_bolt.adapter.fastapi import SlackRequestHandler
+import json
 # RAG imports - only import when actually needed to avoid circular import issues
 # from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
 # from llama_index.embeddings.openai import OpenAIEmbedding  
@@ -32,6 +34,11 @@ HYPERTMODE_BASE_URL = os.getenv("HYPERTMODE_BASE_URL", "https://api.hypertmode.c
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
+# Slack Configuration
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET")
+SLACK_APP_TOKEN = os.getenv("SLACK_APP_TOKEN")
 
 # RAG Configuration
 class RAGManager:
@@ -309,25 +316,106 @@ except ValueError as e:
     logger.error(f"Failed to initialize Hypermode client: {e}")
     hypermode_client = None
 
+# Initialize Slack App
+slack_app = None
+slack_handler = None
+
+if SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET:
+    try:
+        slack_app = App(
+            token=SLACK_BOT_TOKEN,
+            signing_secret=SLACK_SIGNING_SECRET,
+            process_before_response=True
+        )
+        slack_handler = SlackRequestHandler(slack_app)
+        logger.info("Slack app initialized successfully")
+        
+        # Slack event handlers
+        @slack_app.message(".*")
+        async def handle_message_events(body, say, logger):
+            """Handle incoming Slack messages"""
+            try:
+                # Extract message details
+                event = body.get("event", {})
+                user_id = event.get("user")
+                text = event.get("text", "")
+                channel = event.get("channel")
+                
+                # Ignore bot messages to prevent loops
+                if event.get("bot_id"):
+                    return
+                
+                logger.info(f"Received Slack message from {user_id}: {text}")
+                
+                if hypermode_client:
+                    # Generate response using Hypermode
+                    response = await hypermode_client.generate_response(text, user_id)
+                    
+                    # Send response back to Slack
+                    await say(text=response, channel=channel)
+                    logger.info(f"Sent Slack response: {response}")
+                else:
+                    await say("Sorry, the AI assistant is not properly configured.", channel=channel)
+                    
+            except Exception as e:
+                logger.error(f"Error handling Slack message: {e}")
+                await say("Sorry, I encountered an error processing your message.", channel=channel)
+        
+        @slack_app.event("app_mention")
+        async def handle_app_mention_events(body, say, logger):
+            """Handle when the bot is mentioned"""
+            try:
+                event = body.get("event", {})
+                user_id = event.get("user")
+                text = event.get("text", "")
+                channel = event.get("channel")
+                
+                # Remove the bot mention from the text
+                # Slack mentions look like <@U1234567890>
+                import re
+                cleaned_text = re.sub(r'<@[A-Z0-9]+>', '', text).strip()
+                
+                logger.info(f"Bot mentioned by {user_id}: {cleaned_text}")
+                
+                if hypermode_client:
+                    response = await hypermode_client.generate_response(cleaned_text, user_id)
+                    await say(text=response, channel=channel)
+                else:
+                    await say("Sorry, the AI assistant is not properly configured.", channel=channel)
+                    
+            except Exception as e:
+                logger.error(f"Error handling app mention: {e}")
+                await say("Sorry, I encountered an error.", channel=channel)
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize Slack app: {e}")
+        slack_app = None
+        slack_handler = None
+else:
+    logger.warning("Slack configuration missing - Slack integration disabled")
+
 @app.get("/")
 async def root():
     """Health check endpoint"""
     rag_status = "enabled" if rag_manager.rag else "disabled"
     hypermode_status = "configured" if hypermode_client else "not_configured"
+    slack_status = "configured" if slack_app else "not_configured"
     
     return {
-        "message": "Personal Assistant with RAG and Hypermode is running!", 
+        "message": "Personal Assistant with RAG, Hypermode, and Slack is running!", 
         "status": "healthy",
         "services": {
             "rag": rag_status,
-            "hypermode": hypermode_status
+            "hypermode": hypermode_status,
+            "slack": slack_status
         },
         "endpoints": {
             "rag_status": "/rag/status",
             "rag_reload": "/rag/reload",
             "hypermode_status": "/hypermode/status",
             "hypermode_models": "/hypermode/models",
-            "hypermode_test": "/hypermode/test"
+            "hypermode_test": "/hypermode/test",
+            "slack_events": "/slack/events"
         }
     }
 
@@ -414,7 +502,43 @@ async def test_hypermode(
 
 # Removed SMS endpoint since no longer using Twilio
 
-# Removed outbound SMS endpoint since no longer using Twilio
+# Slack Integration Endpoints
+@app.post("/slack/events")
+async def slack_events(request: Request):
+    """Handle Slack events"""
+    if not slack_handler:
+        raise HTTPException(status_code=500, detail="Slack integration not configured")
+    
+    try:
+        return await slack_handler.handle(request)
+    except Exception as e:
+        logger.error(f"Error handling Slack event: {e}")
+        raise HTTPException(status_code=500, detail="Error processing Slack event")
+
+@app.post("/slack/interactive")
+async def slack_interactive(request: Request):
+    """Handle Slack interactive components"""
+    if not slack_handler:
+        raise HTTPException(status_code=500, detail="Slack integration not configured")
+    
+    try:
+        return await slack_handler.handle(request)
+    except Exception as e:
+        logger.error(f"Error handling Slack interaction: {e}")
+        raise HTTPException(status_code=500, detail="Error processing Slack interaction")
+
+@app.get("/slack/status")
+async def slack_status():
+    """Check Slack integration status"""
+    if not slack_app:
+        return {"status": "not_configured", "error": "Slack app not initialized"}
+    
+    return {
+        "status": "configured",
+        "bot_token": bool(SLACK_BOT_TOKEN),
+        "signing_secret": bool(SLACK_SIGNING_SECRET),
+        "app_token": bool(SLACK_APP_TOKEN)
+    }
 
 if __name__ == "__main__":
     import uvicorn

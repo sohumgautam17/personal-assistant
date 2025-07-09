@@ -1,6 +1,6 @@
 # Personal Assistant API
 
-A complete AI-powered personal assistant API using FastAPI and Hypermode with RAG capabilities.
+A complete AI-powered personal assistant with Slack integration, using FastAPI, Hypermode, and RAG capabilities.
 
 ## 🚀 Quick Start
 
@@ -17,8 +17,13 @@ cp env.example .env
 
 Required environment variables:
 - `HYPERMODE_API_KEY`: Your Hypermode API key
-- `OPENAI_API_KEY`: Your OpenAI API key (optional, for enhanced RAG features)
-- `OPENROUTER_API_KEY`: Your OpenRouter API key (optional, alternative to OpenAI)
+- `SLACK_BOT_TOKEN`: Your Slack bot token (for Slack integration)
+- `SLACK_SIGNING_SECRET`: Your Slack app signing secret
+
+Optional environment variables:
+- `OPENAI_API_KEY`: Your OpenAI API key (for enhanced RAG features)
+- `OPENROUTER_API_KEY`: Your OpenRouter API key (alternative to OpenAI)
+- `SLACK_APP_TOKEN`: Your Slack app token (for Socket Mode)
 
 ### 3. Run Locally
 ```bash
@@ -41,6 +46,15 @@ The server will start on `http://localhost:8000`
 1. Get your API key from [hypertmode.com](https://hypertmode.com)
 2. Add to `.env` file
 
+### Slack Setup
+1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps)
+2. Get your Bot User OAuth Token and Signing Secret
+3. Configure Event Subscriptions URL: `https://your-domain.com/slack/events`
+4. Add required bot scopes: `chat:write`, `channels:read`, `im:read`, `users:read`
+5. Install the app to your workspace
+
+For detailed setup instructions, see [SLACK_SETUP.md](SLACK_SETUP.md)
+
 ### Local Development with ngrok
 For testing locally, use ngrok to expose your local server:
 
@@ -57,48 +71,66 @@ ngrok http 8000
 
 ## 📡 API Endpoints
 
-### POST /sms
-Handles incoming SMS from Twilio webhook.
-
-**Parameters:**
-- `Body`: Message content
-- `From`: Sender phone number
-- `To`: Recipient phone number
-
-**Response:** TwiML XML with agent response
-
-### POST /respond
-Send outbound SMS messages (optional).
-
-**Parameters:**
-- `to`: Recipient phone number
-- `message`: Message content
-
 ### GET /
-Health check endpoint.
+Health check endpoint - shows status of all integrated services.
+
+### POST /slack/events
+Handles incoming Slack events (messages, mentions, etc.).
+
+**Headers:**
+- `X-Slack-Signature`: Slack signature for verification
+- `X-Slack-Request-Timestamp`: Request timestamp
+
+**Response:** Slack-formatted response
+
+### POST /slack/interactive
+Handles Slack interactive components (buttons, modals, etc.).
+
+### GET /slack/status
+Check Slack integration status and configuration.
+
+### POST /hypermode/test
+Test Hypermode AI responses directly.
+
+**Parameters:**
+- `message`: Message to send to AI
+
+### GET /hypermode/status
+Check Hypermode API connection status.
+
+### GET /rag/status
+Check RAG system status and document loading.
 
 ## 🔄 Core Flow
 
-1. **User sends SMS** to your Twilio number
-2. **Twilio triggers webhook** to your `/sms` endpoint
-3. **Backend processes** the message through Hypermode
-4. **Agent responds** via Twilio SMS back to user
+1. **User sends message** in Slack (channel, DM, or @mention)
+2. **Slack triggers webhook** to your `/slack/events` endpoint
+3. **Backend processes** the message through Hypermode with RAG
+4. **Agent responds** directly in Slack thread
 
 ## 🧪 Testing
 
-### Test the webhook locally:
+### Test Slack integration:
 ```bash
-curl -X POST http://localhost:8000/sms \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "Body=What's the weather in SF?&From=+1234567890&To=+0987654321"
+# Run the Slack test suite
+python test_slack.py
+
+# Check Slack status
+curl http://localhost:8000/slack/status
 ```
 
-### Test outbound SMS:
+### Test Hypermode AI:
 ```bash
-curl -X POST http://localhost:8000/respond \
+# Test AI responses directly
+curl -X POST http://localhost:8000/hypermode/test \
   -H "Content-Type: application/json" \
-  -d '{"to": "+1234567890", "message": "Test message"}'
+  -d '{"message": "Hello, how are you?"}'
 ```
+
+### Test in Slack:
+1. Send a direct message to your bot
+2. @mention your bot in a channel
+3. Chat naturally - the bot will respond with AI-generated answers
 
 ## 🚀 Deployment
 
@@ -157,35 +189,41 @@ response = index.as_query_engine().query(user_message)
 
 ## 📝 Example Use Cases
 
-### Weather Assistant
-User: "What's the weather in San Francisco?"
-Agent: "Currently 72°F and sunny in San Francisco. Perfect weather for outdoor activities!"
+### In Slack Channels
+**User**: "@assistant What's the weather in San Francisco?"  
+**Bot**: "Currently 72°F and sunny in San Francisco. Perfect weather for outdoor activities!"
 
-### Task Assistant
-User: "Remind me to call mom tomorrow"
-Agent: "I'll remind you to call mom tomorrow. I've set a reminder for you!"
+### Direct Messages
+**User**: "Help me write a Python function to sort a list"  
+**Bot**: "Here's a simple Python function to sort a list: `def sort_list(items): return sorted(items)`. You can also use `list.sort()` for in-place sorting."
 
-### General Q&A
-User: "What's the capital of France?"
-Agent: "The capital of France is Paris. It's known as the 'City of Light' and is famous for its culture, cuisine, and landmarks like the Eiffel Tower."
+### Team Collaboration
+**User**: "Explain machine learning to the team"  
+**Bot**: "Machine learning is a subset of AI that enables computers to learn and improve from data without explicit programming. It's like teaching a computer to recognize patterns..."
+
+### Knowledge Base Integration (with RAG)
+**User**: "How do I deploy this app?"  
+**Bot**: *[Searches your documents]* "Based on your documentation, you can deploy using Railway or Heroku. Here are the steps..."
 
 ## 🛠️ Troubleshooting
 
 ### Common Issues
 
-1. **Webhook not receiving messages**
-   - Check Twilio webhook URL configuration
-   - Ensure server is publicly accessible
-   - Verify ngrok is running (for local testing)
+1. **Slack bot not responding**
+   - Check Event Subscriptions URL is correct and accessible
+   - Verify bot token and signing secret are set
+   - Ensure bot is added to the channel or has DM permissions
+   - Check that your server is publicly accessible via ngrok
 
 2. **Hypermode API errors**
    - Verify API key is correct
    - Check API rate limits
    - Ensure proper JSON formatting
 
-3. **Twilio authentication errors**
-   - Verify Account SID and Auth Token
-   - Check phone number format (+1XXXXXXXXXX)
+3. **Slack authentication errors**
+   - Verify bot token starts with `xoxb-`
+   - Check signing secret is correct
+   - Ensure bot has required scopes
 
 ### Logs
 Check application logs for detailed error information:
